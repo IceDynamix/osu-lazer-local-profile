@@ -100,7 +100,7 @@ var scores = new List<(ScoreInfo, double)>();
             var span = DateTimeOffset.Now.Subtract(dateTime);
             if (span.TotalDays < 0) return "time traveler";
 
-            if (span.Hours < 1) return "now";
+            if (span.Hours < 1 && span.Days < 1) return "just now";
             if (span.Days < 1) return $"{span.Hours}h ago";
             if (span.Days < 7) return $"{span.Days}d ago";
             if (span.Days < 30) return $"{span.Days / 7}w ago";
