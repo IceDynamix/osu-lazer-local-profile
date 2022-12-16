@@ -34,6 +34,16 @@ Ruleset ruleset = mode switch
     _ => throw new Exception("Invalid ruleset (must be one of osu/taiko/catch/mania)"),
 };
 
+string TimeAgoString(DateTimeOffset dateTime)
+{
+    var span = DateTimeOffset.Now.Subtract(dateTime);
+    if (span.Hours < 1) return "now";
+    if (span.Days < 1) return $"{span.Hours}h ago";
+    if (span.Days < 30) return $"{span.Days}d ago";
+    if (span.Days < 365) return $"{span.Days/12}mo ago";
+    return "some time ago";
+}
+
 var realm = Realm.GetInstance(new RealmConfiguration(osuDir + @"/client.realm")
 {
     SchemaVersion = 25 // relates to RealmAccess.schema_version
@@ -91,8 +101,19 @@ for (int i = 0; i < scores.Count(); i++)
     weightedPp += pp * weight / 20;
     weightedAcc += score.Accuracy * weight / 20;
 
+    var ppString = $"{pp:f0}pp";
+    var accString = score.Accuracy.FormatAccuracy();
+    var timeString = TimeAgoString(score.Date);
+    var modString = score.Mods.Length > 0 ? "+" + String.Join(',', score.Mods.Select(m => m.Acronym)) : "";
+
+    var isRecent = DateTimeOffset.Now.Subtract(score.Date).Days < 1;
+
     if (i < 25)
-        Console.WriteLine($"{i, 5} | {pp:f}pp | {score.Accuracy.FormatAccuracy()} | {score.BeatmapInfo.StarRating:f2}* | {score.BeatmapInfo}");
+    {
+        if (isRecent) Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"{i, 5} | {ppString, 6}, {accString, 6} | {timeString, 10} | {score.BeatmapInfo.StarRating:f1}* | {score.BeatmapInfo} {modString}");
+        if (isRecent) Console.ResetColor();
+    }
 }
 
 Console.WriteLine($"{scores.Count()} filtered scores, {weightedPp:f2} avg pp, {weightedPp * 20:f2} total pp, {weightedAcc * 100:f2}% avg acc");
