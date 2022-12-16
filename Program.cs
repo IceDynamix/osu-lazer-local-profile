@@ -11,28 +11,29 @@ using osu.Game.Tests.Beatmaps;
 using osu.Game.Utils;
 using Realms;
 
-var cwd = @"D:\Games\osu-lazer";
-var mode = "taiko";
+if (args.Length == 0) throw new Exception("Missing osu directory argument");
+if (args.Length == 1) throw new Exception("Missing ruleset argument");
+
+var osuDir = args[0];
+var mode = args[1];
 
 WorkingBeatmap GetWorkingBeatmap(string hash)
 {
-    using (var stream = File.OpenRead($"{cwd}/files/{hash[0]}/{hash[0..2]}/{hash}"))
+    using (var stream = File.OpenRead($"{osuDir}/files/{hash[0]}/{hash[0..2]}/{hash}"))
     using (var reader = new LineBufferedReader(stream))
         return new TestWorkingBeatmap(Decoder.GetDecoder<Beatmap>(reader).Decode(reader));
 }
 
-Ruleset? ruleset = mode switch
+Ruleset ruleset = mode switch
 {
     "osu" => new OsuRuleset(),
     "taiko" => new TaikoRuleset(),
     "catch" => new CatchRuleset(),
     "mania" => new ManiaRuleset(),
-    _ => null,
+    _ => throw new Exception("Invalid ruleset (must be one of osu/taiko/catch/mania)"),
 };
 
-if (ruleset is null) throw new Exception("Invalid ruleset");
-
-var realm = Realm.GetInstance(new RealmConfiguration(cwd + @"/client - Copy.realm")
+var realm = Realm.GetInstance(new RealmConfiguration(osuDir + @"/client.realm")
 {
     SchemaVersion = 25 // relates to RealmAccess.schema_version
 });
@@ -45,7 +46,8 @@ foreach (var score in realm.All<ScoreInfo>().Filter("Rank > -1"))
     if (score.Ruleset.ShortName != mode) continue;
     if (score.BeatmapInfo.Status != BeatmapOnlineStatus.Ranked) continue;
     if (personalBests.ContainsKey(score.Hash))
-        if (score.TotalScore < personalBests[score.Hash].TotalScore) continue;
+        if (score.TotalScore < personalBests[score.Hash].TotalScore)
+            continue;
 
     personalBests.Add(score.Hash, score);
 }
@@ -91,6 +93,7 @@ for (int i = 0; i < scores.Count(); i++)
         Console.WriteLine($"{i, 5} | {pp:f}pp | {score.Accuracy.FormatAccuracy()} | {score.BeatmapInfo.StarRating:f2}* | {score.BeatmapInfo}");
 }
 
-Console.WriteLine($"{scores.Count()} filtered scores, {weightedPp:f2} avg pp, {weightedPp * 20:f2} total pp, {weightedAcc*100:f2}% avg acc");
+Console.WriteLine($"{scores.Count()} filtered scores, {weightedPp:f2} avg pp, {weightedPp * 20:f2} total pp, {weightedAcc * 100:f2}% avg acc");
 
+Console.Write("Press any key to close");
 Console.Read();
