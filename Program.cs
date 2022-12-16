@@ -18,12 +18,7 @@ if (args.Length == 1) throw new Exception("Missing ruleset argument");
 var osuDir = args[0];
 var mode = args[1];
 
-WorkingBeatmap GetWorkingBeatmap(string hash)
-{
-    using (var stream = File.OpenRead($"{osuDir}/files/{hash[0]}/{hash[0..2]}/{hash}"))
-    using (var reader = new LineBufferedReader(stream))
-        return new TestWorkingBeatmap(Decoder.GetDecoder<Beatmap>(reader).Decode(reader));
-}
+if (!Directory.Exists(osuDir) || !Directory.Exists(osuDir + "/files")) throw new Exception("osu directory was invalid");
 
 Ruleset ruleset = mode switch
 {
@@ -40,7 +35,7 @@ string TimeAgoString(DateTimeOffset dateTime)
     if (span.Hours < 1) return "now";
     if (span.Days < 1) return $"{span.Hours}h ago";
     if (span.Days < 30) return $"{span.Days}d ago";
-    if (span.Days < 365) return $"{span.Days/12}mo ago";
+    if (span.Days < 365) return $"{span.Days / 12}mo ago";
     return "some time ago";
 }
 
@@ -66,23 +61,39 @@ foreach (var score in realm.All<ScoreInfo>().Filter("Rank > -1"))
 
 Console.WriteLine("Computed personal bests");
 
+WorkingBeatmap GetWorkingBeatmap(string hash)
+{
+    using (var stream = File.OpenRead($"{osuDir}/files/{hash[0]}/{hash[0..2]}/{hash}"))
+    using (var reader = new LineBufferedReader(stream))
+        return new TestWorkingBeatmap(Decoder.GetDecoder<Beatmap>(reader).Decode(reader));
+}
+
 var scores = new List<(ScoreInfo, double)>();
 {
     var i = 0;
     var count = personalBests.Values.Count();
     foreach (var score in personalBests.Values)
     {
-        var beatmap = GetWorkingBeatmap(score.BeatmapInfo.Hash);
+        try
+        {
+            var beatmap = GetWorkingBeatmap(score.BeatmapInfo.Hash);
 
-        var diffCalc = ruleset.CreateDifficultyCalculator(beatmap);
-        var diffAttr = diffCalc.Calculate(score.Mods);
-        var perfCalc = ruleset.CreatePerformanceCalculator();
-        var pp = perfCalc?.Calculate(score, diffAttr);
+            var diffCalc = ruleset.CreateDifficultyCalculator(beatmap);
+            var diffAttr = diffCalc.Calculate(score.Mods);
+            var perfCalc = ruleset.CreatePerformanceCalculator();
+            var pp = perfCalc?.Calculate(score, diffAttr);
 
-        if (pp is not null)
-            scores.Add((score, pp.Total));
-
-        Console.Write($"\r{++i}/{count} scores processed");
+            if (pp is not null)
+                scores.Add((score, pp.Total));
+        }
+        catch (Exception)
+        {
+            Console.WriteLine($"Failed to calculate pp for {score.BeatmapInfo} {score.Accuracy}");
+        }
+        finally
+        {
+            Console.Write($"\r{++i}/{count} scores processed");
+        }
     }
 
     scores = scores.OrderByDescending(s => s.Item2).ToList();
@@ -111,7 +122,7 @@ for (int i = 0; i < scores.Count(); i++)
     if (i < 25)
     {
         if (isRecent) Console.ForegroundColor = ConsoleColor.Red;
-        Console.WriteLine($"{i, 5} | {ppString, 6}, {accString, 6} | {timeString, 10} | {score.BeatmapInfo.StarRating:f1}* | {score.BeatmapInfo} {modString}");
+        Console.WriteLine($"{i+1, 5} | {ppString, 6}, {accString, 6} | {timeString, 10} | {score.BeatmapInfo.StarRating:f1}* | {score.BeatmapInfo} {modString}");
         if (isRecent) Console.ResetColor();
     }
 }
