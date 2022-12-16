@@ -36,14 +36,20 @@ var realm = Realm.GetInstance(new RealmConfiguration(cwd + @"/client - Copy.real
     SchemaVersion = 25 // relates to RealmAccess.schema_version
 });
 
-var scoreResults = new List<(ScoreInfo, double)>();
-
-foreach (var score in realm.All<ScoreInfo>())
+var personalBests = new Dictionary<string, ScoreInfo>();
+foreach (var score in realm.All<ScoreInfo>().Filter("Rank > -1"))
 {
     if (score.Ruleset.ShortName != mode) continue;
-    if (!score.IsValid) continue;
     if (score.BeatmapInfo.Status != BeatmapOnlineStatus.Ranked) continue;
+    if (personalBests.ContainsKey(score.Hash))
+        if (score.TotalScore < personalBests[score.Hash].TotalScore) continue;
 
+    personalBests.Add(score.Hash, score);
+}
+
+var scores = new List<(ScoreInfo, double)>();
+foreach (var score in personalBests.Values)
+{
     var beatmap = GetWorkingBeatmap(score.BeatmapInfo.Hash);
 
     var diffCalc = ruleset.CreateDifficultyCalculator(beatmap);
@@ -52,10 +58,10 @@ foreach (var score in realm.All<ScoreInfo>())
     var pp = perfCalc?.Calculate(score, diffAttr);
 
     if (pp is not null)
-        scoreResults.Add((score, pp.Total));
+        scores.Add((score, pp.Total));
 }
 
-foreach (var (score, pp) in scoreResults.OrderByDescending(s => s.Item2).Take(10))
+foreach (var (score, pp) in scores.OrderByDescending(s => s.Item2).Take(10))
 {
     Console.WriteLine($"{pp:f}pp | {score.BeatmapInfo}");
 }
