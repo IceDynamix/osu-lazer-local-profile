@@ -4,6 +4,7 @@ using osu.Game.IO;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Catch;
 using osu.Game.Rulesets.Mania;
+using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Taiko;
 using osu.Game.Scoring;
@@ -45,6 +46,7 @@ foreach (var score in realm.All<ScoreInfo>().Filter("Rank > -1"))
 {
     if (score.Ruleset.ShortName != mode) continue;
     if (score.BeatmapInfo.Status != BeatmapOnlineStatus.Ranked) continue;
+    if (score.Mods.Any(m => m is ModClassic)) continue;
     if (personalBests.ContainsKey(score.Hash))
         if (score.TotalScore < personalBests[score.Hash].TotalScore)
             continue;
