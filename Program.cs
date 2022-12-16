@@ -12,6 +12,42 @@ using osu.Game.Tests.Beatmaps;
 using osu.Game.Utils;
 using Realms;
 
+void PrintScore(ScoreInfo scoreInfo, double pp, int i1)
+{
+    string TimeAgoString(DateTimeOffset dateTime)
+    {
+        var span = DateTimeOffset.Now.Subtract(dateTime);
+        if (span.TotalDays < 0) return "time traveler";
+
+        if (span.Hours < 1) return "now";
+        if (span.Days < 1) return $"{span.Hours}h ago";
+        if (span.Days < 7) return $"{span.Days}d ago";
+        if (span.Days < 30) return $"{span.Days / 7}w ago";
+        if (span.Days < 365) return $"{span.Days / 12}mo ago";
+
+        return $"{span.Days / 365}y ago";
+    }
+
+    ConsoleColor RowColor(ScoreInfo score)
+    {
+        var span = DateTimeOffset.Now.Subtract(score.Date);
+        if (span.Hours < 1) return ConsoleColor.Magenta;
+        if (span.Days < 1) return ConsoleColor.Red;
+        if (span.Days < 7) return ConsoleColor.Yellow;
+        if (span.Days < 30) return ConsoleColor.Green;
+        return ConsoleColor.White;
+    }
+
+    var ppString = $"{pp:f0}pp";
+    var accString = scoreInfo.Accuracy.FormatAccuracy();
+    var timeString = TimeAgoString(scoreInfo.Date);
+    var modString = scoreInfo.Mods.Length > 0 ? "+" + String.Join(',', scoreInfo.Mods.Select(m => m.Acronym)) : "";
+
+    Console.ForegroundColor = RowColor(scoreInfo);
+    Console.WriteLine($"{i1 + 1, 5} | {ppString, 6}, {accString, 6} | {timeString, 10} | {scoreInfo.BeatmapInfo.StarRating:f1}* | {scoreInfo.BeatmapInfo} {modString}");
+    Console.ResetColor();
+}
+
 if (args.Length == 0) throw new Exception("Missing osu directory argument");
 if (args.Length == 1) throw new Exception("Missing ruleset argument");
 
@@ -28,16 +64,6 @@ Ruleset ruleset = mode switch
     "mania" => new ManiaRuleset(),
     _ => throw new Exception("Invalid ruleset (must be one of osu/taiko/catch/mania)"),
 };
-
-string TimeAgoString(DateTimeOffset dateTime)
-{
-    var span = DateTimeOffset.Now.Subtract(dateTime);
-    if (span.Hours < 1) return "now";
-    if (span.Days < 1) return $"{span.Hours}h ago";
-    if (span.Days < 30) return $"{span.Days}d ago";
-    if (span.Days < 365) return $"{span.Days / 12}mo ago";
-    return "some time ago";
-}
 
 var realm = Realm.GetInstance(new RealmConfiguration(osuDir + @"/client.realm")
 {
@@ -112,18 +138,9 @@ for (int i = 0; i < scores.Count(); i++)
     weightedPp += pp * weight / 20;
     weightedAcc += score.Accuracy * weight / 20;
 
-    var ppString = $"{pp:f0}pp";
-    var accString = score.Accuracy.FormatAccuracy();
-    var timeString = TimeAgoString(score.Date);
-    var modString = score.Mods.Length > 0 ? "+" + String.Join(',', score.Mods.Select(m => m.Acronym)) : "";
-
-    var isRecent = DateTimeOffset.Now.Subtract(score.Date).Days < 1;
-
     if (i < 25)
     {
-        if (isRecent) Console.ForegroundColor = ConsoleColor.Red;
-        Console.WriteLine($"{i+1, 5} | {ppString, 6}, {accString, 6} | {timeString, 10} | {score.BeatmapInfo.StarRating:f1}* | {score.BeatmapInfo} {modString}");
-        if (isRecent) Console.ResetColor();
+        PrintScore(score, pp, i);
     }
 }
 
