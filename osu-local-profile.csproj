@@ -3,9 +3,10 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
-    <RootNamespace>osu_local_profile</RootNamespace>
+    <RootNamespace>osu_lazer_local_profile</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AssemblyName>osu-lazer-local-profile</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
