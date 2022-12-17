@@ -1,4 +1,5 @@
-﻿using osu.Game.Beatmaps;
+﻿using Newtonsoft.Json.Linq;
+using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.Formats;
 using osu.Game.IO;
 using osu.Game.Rulesets;
@@ -17,6 +18,8 @@ if (args.Length == 1) throw new Exception("Missing ruleset argument");
 
 var osuDir = args[0];
 if (!Directory.Exists(osuDir) || !Directory.Exists(osuDir + "/files")) throw new Exception("osu directory was invalid");
+
+var osuDailyApiKeyPath = @"./osu_daily_api_key.txt";
 
 Ruleset ruleset = args[1] switch
 {
@@ -47,6 +50,7 @@ var personalBests = new Dictionary<string, ScoreInfo>();
 
         personalBests.Add(score.Hash, score);
     }
+
     Console.WriteLine("Computed personal bests");
 }
 
@@ -147,6 +151,28 @@ var scores = new List<(ScoreInfo, double)>();
     }
 
     Console.WriteLine($"{scores.Count()} filtered scores, {weightedPp:f2} avg pp, {weightedPp * 20:f2} total pp, {weightedAcc * 100:f2}% avg acc");
+
+    async Task<double?> GetRankFromPp(double pp)
+    {
+        var rulesetId = new List<string> {"osu", "taiko", "catch", "mania"}.IndexOf(args[1]);
+        var key = File.ReadAllText(osuDailyApiKeyPath).Trim();
+        if (key.Length == 0) return null;
+        var jsonString = await new HttpClient()
+            .GetStringAsync($"https://osudaily.net/api/pp.php?k={key}" +
+                            $"&t=pp" +
+                            $"&v={weightedPp * 20}" +
+                            $"&m={rulesetId}"
+            );
+        var rankString = JObject.Parse(jsonString)["rank"];
+        if (rankString is null) return null;
+        double rank;
+        var ok = Double.TryParse(rankString.ToString(), out rank);
+        return ok ? rank : null;
+    }
+
+    var rank = await GetRankFromPp(weightedPp * 20);
+    if (rank is not null)
+        Console.WriteLine($"Estimated rank: #{rank}");
 }
 
 Console.Write("Press any key to close");
