@@ -116,7 +116,7 @@ var scores = new List<(ScoreInfo, double)>();
         ConsoleColor RowColor(ScoreInfo score)
         {
             var span = DateTimeOffset.Now.Subtract(score.Date);
-            if (span.Hours < 1) return ConsoleColor.Magenta;
+            if (span.Hours < 1 && span.Days < 1) return ConsoleColor.Magenta;
             if (span.Days < 1) return ConsoleColor.Red;
             if (span.Days < 7) return ConsoleColor.Yellow;
             if (span.Days < 30) return ConsoleColor.Green;
