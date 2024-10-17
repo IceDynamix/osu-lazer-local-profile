@@ -7,6 +7,7 @@ using osu.Game.Rulesets.Catch;
 using osu.Game.Rulesets.Mania;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu;
+using osu.Game.Rulesets.Scoring;
 using osu.Game.Rulesets.Taiko;
 using osu.Game.Scoring;
 using osu.Game.Tests.Beatmaps;
@@ -32,68 +33,86 @@ Ruleset ruleset = args[1] switch
 
 var realm = Realm.GetInstance(new RealmConfiguration(osuDir + @"/client.realm")
 {
-    SchemaVersion = 25 // relates to RealmAccess.schema_version
+    SchemaVersion = 42 // relates to RealmAccess.schema_version
 });
 
 Console.WriteLine("Created database instance");
 
-var personalBests = new Dictionary<string, ScoreInfo>();
-{
-    foreach (var score in realm.All<ScoreInfo>().Filter("Rank > -1"))
-    {
-        if (score.Ruleset.ShortName != ruleset.ShortName) continue;
-        if (score.BeatmapInfo.Status != BeatmapOnlineStatus.Ranked) continue;
-        if (score.Mods.Any(m => m is ModClassic)) continue;
-        if (personalBests.ContainsKey(score.Hash))
-            if (score.TotalScore < personalBests[score.Hash].TotalScore)
-                continue;
-
-        personalBests.Add(score.Hash, score);
-    }
-
-    Console.WriteLine("Computed personal bests");
-}
-
-
-var scores = new List<(ScoreInfo, double)>();
-{
-    WorkingBeatmap GetWorkingBeatmap(string hash)
-    {
-        using (var stream = File.OpenRead($"{osuDir}/files/{hash[0]}/{hash[0..2]}/{hash}"))
-        using (var reader = new LineBufferedReader(stream))
-            return new TestWorkingBeatmap(Decoder.GetDecoder<Beatmap>(reader).Decode(reader));
-    }
-
-    var i = 0;
-    var count = personalBests.Values.Count();
-    foreach (var score in personalBests.Values)
+var scores = realm.All<ScoreInfo>().Filter("Rank > -1")
+    .AsEnumerable()
+    .Where(s => s.Ruleset.ShortName == ruleset.ShortName)
+    .Where(s => s.BeatmapInfo != null && s.BeatmapInfo.Status == BeatmapOnlineStatus.Ranked)
+    .Where(s => s.Mods.All(m => m.Ranked))
+    .Where(s => s.User.Username != "Guest")
+    .Select(score =>
     {
         try
         {
-            var beatmap = GetWorkingBeatmap(score.BeatmapInfo.Hash);
+            var hash = score.BeatmapInfo.Hash;
+            using var stream = File.OpenRead($"{osuDir}/files/{hash[0]}/{hash[0..2]}/{hash}");
+            using var reader = new LineBufferedReader(stream);
+            var beatmap = new TestWorkingBeatmap(Decoder.GetDecoder<Beatmap>(reader).Decode(reader));
 
             var diffCalc = ruleset.CreateDifficultyCalculator(beatmap);
             var diffAttr = diffCalc.Calculate(score.Mods);
             var perfCalc = ruleset.CreatePerformanceCalculator();
             var pp = perfCalc?.Calculate(score, diffAttr);
-
-            if (pp is not null)
-                scores.Add((score, pp.Total));
+            return (score, pp);
         }
-        catch (Exception)
+        catch (Exception e)
         {
             Console.WriteLine($"Failed to calculate pp for {score.BeatmapInfo} {score.Accuracy}");
+            return (null, null);
         }
-        finally
-        {
-            Console.Write($"\r{++i}/{count} scores processed");
-        }
-    }
+    })
+    .Where(s => s.score != null && s.pp != null)
+    .GroupBy(s => s.score.BeatmapInfo,
+        s => s,
+        (key, group) => group.MaxBy(s => s.pp.Total))
+    .OrderByDescending(s => s.pp.Total)
+    .ToList();
 
-    Console.WriteLine();
-
-    scores = scores.OrderByDescending(s => s.Item2).ToList();
-}
+// var scores = new List<(ScoreInfo, double)>();
+// {
+//     WorkingBeatmap GetWorkingBeatmap(string hash)
+//     {
+//         using var stream = File.OpenRead($"{osuDir}/files/{hash[0]}/{hash[0..2]}/{hash}");
+//         using var reader = new LineBufferedReader(stream);
+//         return new TestWorkingBeatmap(Decoder.GetDecoder<Beatmap>(reader).Decode(reader));
+//     }
+//
+//     var i = 0;
+//     var count = personalBests.Values.Count;
+//     var pbs = new List<(ScoreInfo, double)>();
+//
+//     foreach (var score in personalBests.Values)
+//     {
+//         try
+//         {
+//             var beatmap = GetWorkingBeatmap(score.BeatmapInfo.Hash);
+//
+//             var diffCalc = ruleset.CreateDifficultyCalculator(beatmap);
+//             var diffAttr = diffCalc.Calculate(score.Mods);
+//             var perfCalc = ruleset.CreatePerformanceCalculator();
+//             var pp = perfCalc?.Calculate(score, diffAttr);
+//
+//             if (pp is not null)
+//                 pbs.Add((score, pp.Total));
+//         }
+//         catch (Exception)
+//         {
+//             Console.WriteLine($"Failed to calculate pp for {score.BeatmapInfo} {score.Accuracy}");
+//         }
+//         finally
+//         {
+//             Console.Write($"\r{++i}/{count} scores processed");
+//         }
+//     }
+//
+//     Console.WriteLine();
+//
+//     scores = scores.OrderByDescending(s => s.Item2).ToList();
+// }
 
 
 {
@@ -108,7 +127,7 @@ var scores = new List<(ScoreInfo, double)>();
             if (span.Days < 1) return $"{span.Hours}h ago";
             if (span.Days < 7) return $"{span.Days}d ago";
             if (span.Days < 30) return $"{span.Days / 7}w ago";
-            if (span.Days < 365) return $"{span.Days / 12}mo ago";
+            if (span.Days < 365) return $"{span.Days / 30}mo ago";
 
             return $"{span.Days / 365}y ago";
         }
@@ -128,8 +147,13 @@ var scores = new List<(ScoreInfo, double)>();
         var timeString = TimeAgoString(scoreInfo.Date);
         var modString = scoreInfo.Mods.Length > 0 ? "+" + String.Join(',', scoreInfo.Mods.Select(m => m.Acronym)) : "";
 
+        var misses = scoreInfo.Statistics[HitResult.Miss];
+
+        var judgementsString = misses > 0 ? $"{scoreInfo.Statistics[HitResult.Miss]} miss" : "FC";
+
         Console.ForegroundColor = RowColor(scoreInfo);
-        Console.WriteLine($"{i1 + 1, 5} | {ppString, 6}, {accString, 6} | {timeString, 10} | {scoreInfo.BeatmapInfo.StarRating:f1}* | {scoreInfo.BeatmapInfo} {modString}");
+        Console.WriteLine(
+            $"{i1 + 1,5} | {ppString,6}, {accString,6} | {timeString,10} | {scoreInfo.BeatmapInfo.StarRating:f1}* | {judgementsString,10} | {scoreInfo.BeatmapInfo} {modString}");
         Console.ResetColor();
     }
 
@@ -138,23 +162,26 @@ var scores = new List<(ScoreInfo, double)>();
 
     for (int i = 0; i < scores.Count(); i++)
     {
-        var (score, pp) = scores[i];
-
+        var score = scores[i];
         var weight = Math.Pow(0.95, i);
-        weightedPp += pp * weight / 20;
-        weightedAcc += score.Accuracy * weight / 20;
+        weightedPp += score.pp.Total * weight / 20;
+        weightedAcc += score.score.Accuracy * weight / 20;
 
         if (i < 25)
         {
-            PrintScore(score, pp, i);
+            PrintScore(score.score, score.pp.Total, i);
         }
     }
 
-    Console.WriteLine($"{scores.Count()} filtered scores, {weightedPp:f2} avg pp, {weightedPp * 20:f2} total pp, {weightedAcc * 100:f2}% avg acc");
+    var weightedPpWithBonus = weightedPp + 416.6667d / 20;
+
+    Console.WriteLine(
+        $"{scores.Count()} filtered scores, {weightedPp:f2} avg pp, {weightedPp * 20:f2} total pp, {weightedPpWithBonus * 20:f2} total pp (bonus), {weightedAcc * 100:f2}% avg acc");
 
     async Task<double?> GetRankFromPp(double pp)
     {
-        var rulesetId = new List<string> {"osu", "taiko", "catch", "mania"}.IndexOf(args[1]);
+        var rulesetId = new List<string> { "osu", "taiko", "catch", "mania" }.IndexOf(args[1]);
+        if (!File.Exists(osuDailyApiKeyPath)) return null;
         var key = File.ReadAllText(osuDailyApiKeyPath).Trim();
         if (key.Length == 0) return null;
         var jsonString = await new HttpClient()
